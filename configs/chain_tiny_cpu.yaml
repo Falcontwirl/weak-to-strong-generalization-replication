@@ -1,0 +1,21 @@
+# Tiny CPU integration run of the daisy-chain experiment. Numbers are meaningless; exercises the pipeline.
+experiment: daisy_chain
+name: chain_tiny_cpu
+seeds: [0]
+device: cpu
+dataset:
+  test_limit: 64
+splits:
+  split_seed: 1234
+  sizes: {val: 48, seed_true_train: 64, g2: 64, g3: 64, g4: 64}
+models:
+  - {name: p14m,  id: EleutherAI/pythia-14m,  params: 1.4e7, lr: 5.0e-4, batch_size: 16}
+  - {name: p31m,  id: EleutherAI/pythia-31m,  params: 3.1e7, lr: 3.0e-4, batch_size: 16}
+  - {name: p70m,  id: EleutherAI/pythia-70m,  params: 7.0e7, lr: 1.0e-4, batch_size: 16}
+  - {name: p160m, id: EleutherAI/pythia-160m, params: 1.6e8, lr: 5.0e-5, batch_size: 16}
+train:
+  epochs: 1
+  max_length: 64
+  eval_batch_size: 32
+analysis:
+  n_bootstrap: 500

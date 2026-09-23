@@ -67,3 +67,47 @@ def test_unknown_label_source(tmp_path):
     c = ctx(tmp_path)
     with pytest.raises(ValueError):
         prepare([Job("s", "b", 0, train_split="strong_train", label_source="nope")], c)
+
+
+def chain_ctx(tmp_path, n=4):
+    c = ctx(tmp_path)
+    c.cfg["experiment"] = "daisy_chain"
+    c.cfg["models"] = [{"name": f"m{i}", "id": f"x/m{i}", "lr": 1e-4} for i in range(1, n + 1)]
+    sizes = {"val": 5, "seed_true_train": 5, **{f"g{k}": 5 for k in range(2, n + 1)}}
+    train_ids = [f"train:{i}" for i in range(40)]
+    splits = make_splits(train_ids, [f"test:{i}" for i in range(5)], sizes, 0)
+    c.task = TaskData(c.task.examples, splits, ["n", "p"], {})
+    return c
+
+
+def test_chain_graph_structure(tmp_path):
+    from src.experiments import daisy_chain
+
+    c = chain_ctx(tmp_path)
+    jobs = prepare(daisy_chain.build_jobs(c.cfg, 0, first=False), c)
+    by = {j.name: j for j in jobs}
+    assert daisy_chain.direct_pairs(c.cfg) == [(1, 3), (1, 4), (2, 4)]
+    # each chain student is supervised by its immediate predecessor on its own split
+    assert by["s0/chain/g2/m2"].label_source == "s0/seed_gt/m1"
+    assert by["s0/chain/g3/m3"].label_source == "s0/chain/g2/m2"
+    assert by["s0/chain/g4/m4"].label_source == "s0/chain/g3/m3"
+    assert all(by[f"s0/chain/g{k}/m{k}"].train_split == f"g{k}" for k in (2, 3, 4))
+    # chain M4, direct M1->M4, direct M2->M4 and GT M4 share the same g4 examples
+    assert {by[n].train_split for n in ["s0/chain/g4/m4", "s0/direct/m1->m4", "s0/direct/m2->m4",
+                                        "s0/gt_upper/m4"]} == {"g4"}
+    # teachers are asked to label exactly the splits their students need (+ val for selection)
+    assert set(by["s0/seed_gt/m1"].label_splits) == {"g2", "g3", "g4", "val"}
+    assert set(by["s0/chain/g2/m2"].label_splits) == {"g3", "g4", "val"}
+    assert by["s0/chain/g4/m4"].label_splits == ()
+    assert daisy_chain.required_splits(c.cfg) == ("val", "seed_true_train", "g2", "g3", "g4")
+
+
+def test_chain_direct_pairs_validation(tmp_path):
+    from src.experiments import daisy_chain
+
+    c = chain_ctx(tmp_path)
+    c.cfg["daisy_chain"] = {"direct": [["m1", "m2"]]}
+    with pytest.raises(ValueError):
+        daisy_chain.direct_pairs(c.cfg)
+    c.cfg["daisy_chain"] = {"direct": [["m1", "m4"]]}
+    assert daisy_chain.direct_pairs(c.cfg) == [(1, 4)]

@@ -1,4 +1,4 @@
-"""Experiment definitions. Each module exposes REQUIRED_SPLITS, build_jobs(cfg, seed, first) and analyze(...)."""
+"""Experiment definitions. Each module exposes required_splits(cfg), build_jobs(cfg, seed, first) and analyze(...)."""
 import importlib
 
 

@@ -22,6 +22,10 @@ NAME = "base_w2s"
 REQUIRED_SPLITS = ("val", "weak_train", "strong_train")
 
 
+def required_splits(cfg: dict) -> tuple[str, ...]:
+    return REQUIRED_SPLITS
+
+
 def pairs(cfg: dict) -> list[tuple[str, str]]:
     names = [m["name"] for m in cfg["models"]]
     spec = cfg["base_w2s"]["pairs"]

@@ -1,0 +1,13 @@
+# GPU smoke test of the daisy chain with a 3-model ladder (~3-5 min on an A100).
+experiment: daisy_chain
+name: chain_smoke
+seeds: [0]
+splits:
+  split_seed: 1234
+  sizes: {val: 500, seed_true_train: 1000, g2: 1000, g3: 1000}
+models:
+  - {name: p70m,  id: EleutherAI/pythia-70m,  params: 7.0e7, lr: 1.0e-4, batch_size: 32}
+  - {name: p160m, id: EleutherAI/pythia-160m, params: 1.6e8, lr: 5.0e-5, batch_size: 32}
+  - {name: p410m, id: EleutherAI/pythia-410m, params: 4.1e8, lr: 3.0e-5, batch_size: 32}
+train:
+  epochs: 2

@@ -29,7 +29,7 @@ def main(argv=None):
     if args.seeds:
         cfg["seeds"] = args.seeds
     exp = get_experiment(cfg["experiment"])
-    missing = [s for s in exp.REQUIRED_SPLITS if s not in cfg["splits"]["sizes"]]
+    missing = [s for s in exp.required_splits(cfg) if s not in cfg["splits"]["sizes"]]
     if missing:
         raise ValueError(f"experiment {cfg['experiment']} requires split sizes for {missing}")
 
