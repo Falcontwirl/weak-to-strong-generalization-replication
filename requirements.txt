@@ -1,0 +1,14 @@
+# Tested with torch 2.14, transformers 5.17, datasets 5.0 (Python 3.12). Exact versions of every run are
+# recorded in outputs/<run>/run_metadata.json.
+torch>=2.4
+transformers>=4.56   # uses the `dtype=` from_pretrained kwarg
+datasets>=2.19
+peft>=0.12
+accelerate>=0.33
+safetensors>=0.4
+pandas>=2.1
+pyarrow>=15
+numpy>=1.26
+matplotlib>=3.8
+pyyaml>=6.0
+pytest>=8.0

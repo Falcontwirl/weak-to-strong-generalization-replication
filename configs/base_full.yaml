@@ -1,0 +1,22 @@
+# Full base weak-to-strong experiment: Pythia 160M/410M/1B/2.8B, all 6 weak->strong pairs, 3 seeds.
+# Budget: ~1 hour on a single A100 80GB (run `--dry-run` for an estimate).
+experiment: base_w2s
+name: base_full
+seeds: [0, 1, 2]
+splits:
+  split_seed: 1234
+  sizes: {val: 1000, weak_train: 5000, strong_train: 5000}
+models:
+  - {name: p160m, id: EleutherAI/pythia-160m, params: 1.6e8, lr: 5.0e-5, batch_size: 32}
+  - {name: p410m, id: EleutherAI/pythia-410m, params: 4.1e8, lr: 3.0e-5, batch_size: 32}
+  - {name: p1b,   id: EleutherAI/pythia-1b,   params: 1.0e9, lr: 2.0e-5, batch_size: 32}
+  - {name: p2.8b, id: EleutherAI/pythia-2.8b, params: 2.8e9, lr: 1.0e-5, batch_size: 32}
+train:
+  epochs: 2
+  max_length: 128
+  evals_per_epoch: 2
+  loss: soft_ce
+  selection: auto
+  save_checkpoints: false   # set true to keep bf16 weights per job (~30 GB per seed for this config)
+base_w2s:
+  pairs: all

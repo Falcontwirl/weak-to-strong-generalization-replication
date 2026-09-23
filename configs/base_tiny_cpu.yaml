@@ -1,0 +1,22 @@
+# Tiny CPU integration run of the base weak-to-strong experiment (minutes on a laptop).
+# Numbers from this config are meaningless; it only exercises the full pipeline.
+experiment: base_w2s
+name: base_tiny_cpu
+seeds: [0]
+device: cpu
+dataset:
+  test_limit: 64
+splits:
+  split_seed: 1234
+  sizes: {val: 48, weak_train: 64, strong_train: 64}
+models:
+  - {name: p14m, id: EleutherAI/pythia-14m, params: 1.4e7, lr: 5.0e-4, batch_size: 16}
+  - {name: p31m, id: EleutherAI/pythia-31m, params: 3.1e7, lr: 3.0e-4, batch_size: 16}
+  - {name: p70m, id: EleutherAI/pythia-70m, params: 7.0e7, lr: 1.0e-4, batch_size: 16}
+train:
+  epochs: 1
+  max_length: 64
+  evals_per_epoch: 2
+  eval_batch_size: 32
+analysis:
+  n_bootstrap: 500
