@@ -33,8 +33,9 @@ def load_classifier(mcfg: dict, num_labels: int, device: str):
         mcfg["id"], num_labels=num_labels, dtype=torch.float32
     )
     model.config.pad_token_id = tok.pad_token_id
-    # Zero-init the new linear head (as in OpenAI's weak-to-strong code): the pretrained last-token
-    # hidden states have large norms, so a random head starts with huge, arbitrary logits.
+    # Zero-init the new linear head: the pretrained last-token hidden states have large norms, so a
+    # random head starts with huge, arbitrary logits. (The paper instead initializes the head from the
+    # unembedding rows of tokens "0" and "1"; see README "Deviations from the paper".)
     head = getattr(model, "score", None) or getattr(model, "classifier", None)
     if isinstance(head, torch.nn.Linear):
         torch.nn.init.zeros_(head.weight)

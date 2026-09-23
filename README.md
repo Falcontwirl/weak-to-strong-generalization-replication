@@ -11,7 +11,7 @@ The weak-to-strong setup is an analogue of *scalable oversight*: humans (weak) s
 
 **Task.** SST-2 binary sentiment (GLUE). GLUE's test labels are hidden, so the **official validation split (872 examples) is the final held-out test set**. Every training, labeling and model-selection split is carved from the train split.
 
-**Model ladder.** Pythia 160M → 410M → 1B → 2.8B (EleutherAI). One family with the same pretraining data and tokenizer, so capacity is the main variable. Each model is fine-tuned in full with a linear classification head on the last token, as in the paper. The head is zero-initialized.
+**Model ladder.** Pythia 160M → 410M → 1B → 2.8B (EleutherAI). One family with the same pretraining data and tokenizer, so capacity is the main variable. Each model is fine-tuned in full with a linear classification head on the last token, as in the paper. The head is zero-initialized (the paper initializes it from the unembedding rows for tokens "0"/"1").
 
 **Soft labels.** By default students train on the teacher's full probability vector (`soft_ce`: cross-entropy against the teacher distribution, which equals KL up to a constant). Setting `train.loss: hard_ce` trains on argmax labels instead.
 
@@ -195,4 +195,4 @@ tests/               splits, metrics, label artifacts / leakage, job graphs, end
 - **Chains confound capability scaling with self-training.** Repeated pseudo-labeling has its own noisy-label dynamics, which is why the direct and GT-upper controls are mandatory.
 - **SST-2 has a compressed accuracy range** (roughly 85–93% for this ladder). With 872 test examples, one example is about 0.11 percentage points, so small PGR differences are within noise. Rely on seeds and the bootstrap CIs, and avoid over-claiming from one seed.
 - **The paper's auxiliary confidence loss and bootstrapping-with-intermediate-models variants are not implemented** (listed as extensions). Hyperparameters are fixed per model size and were not tuned on test. Learning rates follow common Pythia fine-tuning values and were sanity-checked on a small run: 70M→160M on 2,000 examples gave weak 73.5%, W2S 78.8%, ceiling 83.0%, PGR 0.55.
-- **Model selection uses validation data.** Ground-truth jobs select on ground-truth validation labels, and weak jobs on teacher-labeled validation labels. The paper's setting differs slightly, so compare absolute PGR values with care.
+- **Model selection uses validation data.** Weak jobs early-stop on accuracy against teacher labels on a held-out validation set, as the paper does (its Appendix A). Ground-truth jobs select on ground-truth validation labels.
