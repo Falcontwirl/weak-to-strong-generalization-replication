@@ -12,3 +12,4 @@ numpy>=1.26
 matplotlib>=3.8
 pyyaml>=6.0
 pytest>=8.0
+bitsandbytes>=0.45        # only needed for models with 'optimizer: adamw8bit' (Pythia-2.8B on 48 GB cards)

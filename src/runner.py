@@ -12,6 +12,10 @@ from .utils import log, stable_hash, write_json
 
 # Train-config keys that don't change results and therefore don't enter the cache key.
 _NON_SEMANTIC_TRAIN_KEYS = {"save_checkpoints", "eval_batch_size", "num_workers"}
+# Train-config keys that only affect weakly-supervised jobs: GT jobs keep their keys (and cache) without them.
+_WEAK_ONLY_TRAIN_KEYS = {"conf_loss"}
+# Optional dataset keys; they enter the key only when set, so configs that omit them keep their old keys.
+_OPTIONAL_DATASET_KEYS = ("text_template",)
 
 
 def prepare(jobs: list[Job], ctx: RunContext) -> list[Job]:
@@ -58,15 +62,20 @@ def prepare(jobs: list[Job], ctx: RunContext) -> list[Job]:
 def job_key(j: Job, ctx: RunContext, by: dict[str, Job]) -> str:
     task = ctx.task
     mcfg = {k: v for k, v in ctx.model_cfg(j.model).items() if k != "name"}
+    dcfg, tcfg = ctx.cfg["dataset"], ctx.cfg["train"]
     payload = {
         "kind": j.kind, "model": mcfg, "seed": j.seed, "test": task.split_hash(TEST_ROLE),
-        "dataset": {k: ctx.cfg["dataset"][k] for k in ("path", "name", "text_field", "label_field", "label_names")},
+        "dataset": {**{k: dcfg[k] for k in ("path", "name", "text_field", "label_field", "label_names")},
+                    **{k: dcfg[k] for k in _OPTIONAL_DATASET_KEYS if dcfg.get(k) is not None}},
     }
     if j.kind == "zero_shot":
         payload["zero_shot"] = ctx.cfg["zero_shot"]
-        payload["max_length"] = ctx.cfg["train"]["max_length"]
+        payload["max_length"] = tcfg["max_length"]
+        if "truncation_side" in tcfg:
+            payload["truncation_side"] = tcfg["truncation_side"]
     else:
-        payload["train"] = {k: v for k, v in ctx.cfg["train"].items() if k not in _NON_SEMANTIC_TRAIN_KEYS}
+        skip = _NON_SEMANTIC_TRAIN_KEYS | (set() if j.is_weak else _WEAK_ONLY_TRAIN_KEYS)
+        payload["train"] = {k: v for k, v in tcfg.items() if k not in skip}
         payload["selection"] = selection_mode(j, ctx.cfg["train"])
         payload["train_split"] = task.split_hash(j.train_split)
         payload["val"] = task.split_hash(VAL_ROLE)

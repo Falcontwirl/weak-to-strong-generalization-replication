@@ -37,11 +37,13 @@ def load_examples(dcfg: dict) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
     from datasets import load_dataset
 
     ds = load_dataset(dcfg["path"], dcfg.get("name"))
-    tf, lf = dcfg["text_field"], dcfg["label_field"]
+    tf, lf, tmpl = dcfg["text_field"], dcfg["label_field"], dcfg.get("text_template")
 
     def to_df(split: str, prefix: str) -> pd.DataFrame:
         d = ds[split]
-        df = pd.DataFrame({"text": d[tf], "label": np.asarray(d[lf], dtype=np.int64)})
+        # text_template (e.g. "Passage: {passage}\nQuestion: {question}?") builds the input from several fields.
+        texts = [tmpl.format(**row) for row in d] if tmpl else d[tf]
+        df = pd.DataFrame({"text": texts, "label": np.asarray(d[lf], dtype=np.int64)})
         df["example_id"] = [f"{prefix}:{i}" for i in range(len(df))]
         return df.set_index("example_id")
 
@@ -54,6 +56,7 @@ def load_examples(dcfg: dict) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
         "name": dcfg.get("name"),
         "train_split": dcfg["train_split"],
         "test_split": dcfg["test_split"],
+        "text_template": tmpl,
         "fingerprint_train": getattr(ds[dcfg["train_split"]], "_fingerprint", None),
         "fingerprint_test": getattr(ds[dcfg["test_split"]], "_fingerprint", None),
         "n_train_pool": len(train),

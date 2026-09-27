@@ -56,7 +56,9 @@ def make_collate(pad_id: int):
     return collate
 
 
-def tokenize(tok, texts: list[str], max_length: int) -> list[list[int]]:
+def tokenize(tok, texts: list[str], max_length: int, truncation_side: str = "right") -> list[list[int]]:
+    # "left" keeps the end of long inputs, e.g. the question and "Answer:" after a long passage.
+    tok.truncation_side = truncation_side
     enc = tok([t.strip() for t in texts], truncation=True, max_length=max_length, add_special_tokens=True)
     return [ids if len(ids) else [tok.eos_token_id] for ids in enc["input_ids"]]
 
@@ -82,6 +84,53 @@ def targets_from_teacher(split_df: pd.DataFrame, labels_df: pd.DataFrame, num_la
 
 def soft_cross_entropy(logits: torch.Tensor, target_probs: torch.Tensor) -> torch.Tensor:
     return -(target_probs * F.log_softmax(logits.float(), dim=-1)).sum(-1).mean()
+
+
+def conf_coef(step: int, total: int, conf: dict) -> float:
+    """Weight of the self-confidence term.
+
+    schedule "linear" (default): ramp from 0 to ``alpha`` over ``warmup_frac`` of training.
+    schedule "ref": as in openai/weak-to-strong ``logconf_loss_fn``: ``alpha * step_frac`` while
+    step_frac <= warmup_frac (so at most alpha * warmup_frac), then jump to ``alpha``.
+    """
+    alpha, frac = float(conf["alpha"]), step / max(1, total)
+    schedule = conf.get("schedule", "linear")
+    if schedule == "ref":
+        return alpha * (frac if frac <= conf.get("warmup_frac", 0.1) else 1.0)
+    if schedule != "linear":
+        raise ValueError(f"unknown conf_loss schedule {schedule}")
+    warm = conf.get("warmup_frac", 0.2) * total
+    ramp = 1.0 if warm <= 0 else min(1.0, step / warm)
+    return alpha * ramp
+
+
+def conf_targets(logits: torch.Tensor, weak_probs: torch.Tensor, coef: float) -> torch.Tensor:
+    """Auxiliary confidence loss targets (Burns et al., 2023), binary tasks only.
+
+    CE is linear in the target, so (1 - a) CE(f, weak) + a CE(f, hardened f) = CE(f, mixed target).
+    The student's predictions are hardened with a batch-adaptive threshold chosen so the fraction
+    predicted positive matches the weak labels' mean positive probability (as in the paper's code).
+    """
+    if weak_probs.shape[-1] != 2:
+        raise ValueError("conf_loss supports binary tasks only")
+    p1 = torch.softmax(logits.detach().float(), dim=-1)[:, 1]
+    thr = torch.quantile(p1, 1.0 - weak_probs[:, 1].mean())
+    hard1 = (p1 > thr).float()
+    hardened = torch.stack([1.0 - hard1, hard1], dim=-1)
+    return (1.0 - coef) * weak_probs + coef * hardened
+
+
+def make_optimizer(params, mcfg: dict, tcfg: dict, device: str):
+    name = mcfg.get("optimizer", "adamw")
+    if name == "adamw":
+        return torch.optim.AdamW(params, lr=float(mcfg["lr"]), weight_decay=tcfg["weight_decay"],
+                                 fused=(device == "cuda"))
+    if name == "adamw8bit":
+        # 8-bit optimizer state (bitsandbytes): ~2 bytes/param instead of 8, so 2.8B full fine-tuning fits 48 GB.
+        import bitsandbytes as bnb
+
+        return bnb.optim.AdamW8bit(params, lr=float(mcfg["lr"]), weight_decay=tcfg["weight_decay"])
+    raise ValueError(f"unknown optimizer {name}")
 
 
 def autocast_ctx(device: str):
@@ -116,11 +165,12 @@ def softmax_np(logits: np.ndarray) -> np.ndarray:
 
 def train_model(model, tok, train_ids: list[list[int]], train_targets: np.ndarray,
                 val_ids: list[list[int]], val_labels: np.ndarray | None, *,
-                mcfg: dict, tcfg: dict, device: str, seed: int) -> dict:
+                mcfg: dict, tcfg: dict, device: str, seed: int, conf: dict | None = None) -> dict:
     """Train in place; restore the best val state. ``val_labels`` None => no selection (final state).
 
     ``val_labels`` are hard labels to score val accuracy against: ground truth for GT jobs,
     teacher hard labels for weak jobs (so weak jobs never see ground truth).
+    ``conf`` ({alpha, warmup_frac}) enables the auxiliary confidence loss; the caller passes it for weak jobs only.
     """
     bs = mcfg.get("batch_size", 32)
     accum = mcfg.get("grad_accum", tcfg.get("grad_accum", 1))
@@ -133,8 +183,7 @@ def train_model(model, tok, train_ids: list[list[int]], train_targets: np.ndarra
     total = steps_per_epoch * epochs
     eval_every = max(1, steps_per_epoch // max(1, tcfg["evals_per_epoch"]))
     params = [p for p in model.parameters() if p.requires_grad]
-    opt = torch.optim.AdamW(params, lr=float(mcfg["lr"]), weight_decay=tcfg["weight_decay"],
-                            fused=(device == "cuda"))
+    opt = make_optimizer(params, mcfg, tcfg, device)
     warm = int(total * tcfg["warmup_frac"])
     sched = torch.optim.lr_scheduler.LambdaLR(
         opt, lambda s: (s + 1) / max(1, warm) if s < warm else max(0.0, (total - s) / max(1, total - warm)))
@@ -159,7 +208,10 @@ def train_model(model, tok, train_ids: list[list[int]], train_targets: np.ndarra
             batch = {k: v.to(device) for k, v in batch.items()}
             with autocast_ctx(device):
                 out = model(input_ids=batch["input_ids"], attention_mask=batch["attention_mask"])
-            loss = soft_cross_entropy(out.logits, batch["target_probs"]) / accum
+            target = batch["target_probs"]
+            if conf is not None:
+                target = conf_targets(out.logits, target, conf_coef(step, total, conf))
+            loss = soft_cross_entropy(out.logits, target) / accum
             loss.backward()
             running.append(loss.item() * accum)
             if (i + 1) % accum == 0 or i + 1 == len(dl):

@@ -111,3 +111,15 @@ def test_chain_direct_pairs_validation(tmp_path):
         daisy_chain.direct_pairs(c.cfg)
     c.cfg["daisy_chain"] = {"direct": [["m1", "m4"]]}
     assert daisy_chain.direct_pairs(c.cfg) == [(1, 4)]
+
+
+def test_conf_loss_changes_only_weak_job_keys(tmp_path):
+    c = ctx(tmp_path)
+    k0 = {j.name: j.key for j in prepare(base_w2s.build_jobs(c.cfg, 0, True), c)}
+    c2 = ctx(tmp_path, conf_loss={"alpha": 0.75, "warmup_frac": 0.2})
+    jobs2 = prepare(base_w2s.build_jobs(c2.cfg, 0, True), c2)
+    for j in jobs2:
+        if j.is_weak:
+            assert j.key != k0[j.name], j.name
+        else:
+            assert j.key == k0[j.name], j.name

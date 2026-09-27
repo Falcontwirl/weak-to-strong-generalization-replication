@@ -128,6 +128,7 @@ def _run_zero_shot(job: Job, ctx: RunContext, d: Path) -> dict:
     zcfg, tcfg = ctx.cfg["zero_shot"], ctx.cfg["train"]
     mcfg = ctx.model_cfg(job.model)
     model, tok = load_causal_lm(mcfg["id"], ctx.device)
+    tok.truncation_side = tcfg.get("truncation_side", "right")
     test = ctx.task.split(TEST_ROLE)
     logits = zero_shot_logits(model, tok, list(test["text"]), zcfg["prompt"], zcfg["verbalizers"], ctx.device,
                               tcfg["eval_batch_size"], tcfg["max_length"] + 32)
@@ -142,9 +143,10 @@ def _run_train(job: Job, ctx: RunContext, d: Path, source: JobResult | None) -> 
     tcfg, mcfg = cfg["train"], ctx.model_cfg(job.model)
     C = len(task.label_names)
     model, tok = load_classifier(mcfg, C, ctx.device)
+    side = tcfg.get("truncation_side", "right")
     train_df, val_df = task.split(job.train_split), task.split(VAL_ROLE)
-    train_ids = tokenize(tok, list(train_df["text"]), tcfg["max_length"])
-    val_ids = tokenize(tok, list(val_df["text"]), tcfg["max_length"])
+    train_ids = tokenize(tok, list(train_df["text"]), tcfg["max_length"], side)
+    val_ids = tokenize(tok, list(val_df["text"]), tcfg["max_length"], side)
 
     if job.is_weak:
         assert source is not None and source.status == "done"
@@ -162,18 +164,19 @@ def _run_train(job: Job, ctx: RunContext, d: Path, source: JobResult | None) -> 
     else:
         val_labels = None
 
+    conf = tcfg.get("conf_loss") if job.is_weak else None
     tinfo = train_model(model, tok, train_ids, targets, val_ids, val_labels, mcfg=mcfg, tcfg=tcfg,
-                        device=ctx.device, seed=job.seed)
+                        device=ctx.device, seed=job.seed, conf=conf)
     test = task.split(TEST_ROLE)
-    logits = predict(model, tokenize(tok, list(test["text"]), tcfg["max_length"]), tok.pad_token_id, ctx.device,
-                     tcfg["eval_batch_size"])
+    logits = predict(model, tokenize(tok, list(test["text"]), tcfg["max_length"], side), tok.pad_token_id,
+                     ctx.device, tcfg["eval_batch_size"])
     preds = build_pred_frame(test, logits)
     preds.to_parquet(d / "test_preds.parquet", index=False)
     _write_labels(model, tok, ctx, job, d, list(job.label_splits))
     if tcfg.get("save_checkpoints"):
         _save_checkpoint(model, tok, d)
     info = {"test_acc": float(preds["correct"].mean()), "selection": sel, "n_train": len(train_df),
-            "n_params": count_params(model), **tinfo}
+            "n_params": count_params(model), "conf_loss": conf, **tinfo}
     write_json(d / "train_log.json", info)
     _free(model)
     return info
@@ -186,8 +189,8 @@ def _write_labels(model, tok, ctx: RunContext, job: Job, d: Path, splits: list[s
         if split == TEST_ROLE:
             raise AssertionError("Refusing to generate training labels on the test split")
         df = ctx.task.split(split)
-        logits = predict(model, tokenize(tok, list(df["text"]), tcfg["max_length"]), tok.pad_token_id,
-                         ctx.device, tcfg["eval_batch_size"])
+        logits = predict(model, tokenize(tok, list(df["text"]), tcfg["max_length"], tcfg.get("truncation_side", "right")),
+                         tok.pad_token_id, ctx.device, tcfg["eval_batch_size"])
         frame = build_label_frame(df, logits, mcfg["id"], job.name, job.generation)
         save_labels(frame, d / f"labels_{split}.parquet", ctx.task.label_names)
         log(f"    labeled {split}: teacher acc {frame['teacher_correct'].mean():.4f} (n={len(frame)})")

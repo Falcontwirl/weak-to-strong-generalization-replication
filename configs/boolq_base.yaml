@@ -1,0 +1,38 @@
+# Base weak-to-strong on BoolQ (one of the paper's NLP tasks): far more headroom than SST-2 for these models.
+# Official validation (3270) = final test; val/weak_train/strong_train carved from train (9427).
+# Majority class ("yes") = 62.2% of test. Inputs: median 130 tokens, 94% <= 256; left truncation keeps the
+# question and "Answer:" when a long passage is cut.
+experiment: base_w2s
+name: boolq_base
+seeds: [0, 1, 2]
+dataset:
+  path: google/boolq
+  name: null
+  text_field: passage
+  label_field: answer
+  text_template: "Passage: {passage}\nQuestion: {question}?\nAnswer:"
+  label_names: ["no", "yes"]
+  train_split: train
+  test_split: validation
+splits:
+  split_seed: 1234
+  sizes: {val: 1000, weak_train: 4000, strong_train: 4000}
+models:
+  - {name: p160m, id: EleutherAI/pythia-160m, params: 1.6e8, lr: 5.0e-5, batch_size: 32}
+  - {name: p410m, id: EleutherAI/pythia-410m, params: 4.1e8, lr: 3.0e-5, batch_size: 32}
+  - {name: p1b,   id: EleutherAI/pythia-1b,   params: 1.0e9, lr: 2.0e-5, batch_size: 32}
+  - {name: p1.4b, id: EleutherAI/pythia-1.4b, params: 1.4e9, lr: 1.5e-5, batch_size: 32}
+train:
+  epochs: 2
+  max_length: 256
+  truncation_side: left
+  evals_per_epoch: 2
+  loss: soft_ce
+  selection: auto
+  eval_batch_size: 32
+  save_checkpoints: false
+zero_shot:
+  prompt: "{text}"
+  verbalizers: [" no", " yes"]
+base_w2s:
+  pairs: all

@@ -1,0 +1,25 @@
+# E9: conf loss with the openai/weak-to-strong reference settings (aux_coef 0.5; coef = 0.5*step_frac for the
+# first 10% of training, then 0.5). Run with EXTRA="--reuse-from outputs/base_full_2p8b-3c122e41" (E4), so
+# teachers/ceilings are E4's and only the 30 W2S jobs retrain; compare paired against E4 (naive) and E5 (our settings).
+experiment: base_w2s
+name: base_full_2p8b_conf_ref
+seeds: [0, 1, 2]
+splits:
+  split_seed: 1234
+  sizes: {val: 1000, weak_train: 5000, strong_train: 5000}
+models:
+  - {name: p160m, id: EleutherAI/pythia-160m, params: 1.6e8, lr: 5.0e-5, batch_size: 32}
+  - {name: p410m, id: EleutherAI/pythia-410m, params: 4.1e8, lr: 3.0e-5, batch_size: 32}
+  - {name: p1b,   id: EleutherAI/pythia-1b,   params: 1.0e9, lr: 2.0e-5, batch_size: 32}
+  - {name: p1.4b, id: EleutherAI/pythia-1.4b, params: 1.4e9, lr: 1.5e-5, batch_size: 32}
+  - {name: p2.8b, id: EleutherAI/pythia-2.8b, params: 2.8e9, lr: 1.0e-5, batch_size: 32, optimizer: adamw8bit}
+train:
+  epochs: 2
+  max_length: 128
+  evals_per_epoch: 2
+  loss: soft_ce
+  selection: auto
+  save_checkpoints: false
+  conf_loss: {alpha: 0.5, warmup_frac: 0.1, schedule: ref}
+base_w2s:
+  pairs: all

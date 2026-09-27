@@ -1,0 +1,25 @@
+# base_full_2p8b with the auxiliary confidence loss (see base_full_48gb_conf.yaml). Reuse both earlier runs:
+#   EXTRA="--reuse-from outputs/<base_full_2p8b dir> --reuse-from outputs/<base_full_48gb_conf dir>"
+# so only the 12 conf-loss W2S jobs into p2.8b retrain.
+experiment: base_w2s
+name: base_full_2p8b_conf
+seeds: [0, 1, 2]
+splits:
+  split_seed: 1234
+  sizes: {val: 1000, weak_train: 5000, strong_train: 5000}
+models:
+  - {name: p160m, id: EleutherAI/pythia-160m, params: 1.6e8, lr: 5.0e-5, batch_size: 32}
+  - {name: p410m, id: EleutherAI/pythia-410m, params: 4.1e8, lr: 3.0e-5, batch_size: 32}
+  - {name: p1b,   id: EleutherAI/pythia-1b,   params: 1.0e9, lr: 2.0e-5, batch_size: 32}
+  - {name: p1.4b, id: EleutherAI/pythia-1.4b, params: 1.4e9, lr: 1.5e-5, batch_size: 32}
+  - {name: p2.8b, id: EleutherAI/pythia-2.8b, params: 2.8e9, lr: 1.0e-5, batch_size: 32, optimizer: adamw8bit}
+train:
+  epochs: 2
+  max_length: 128
+  evals_per_epoch: 2
+  loss: soft_ce
+  selection: auto
+  save_checkpoints: false
+  conf_loss: {alpha: 0.75, warmup_frac: 0.2}
+base_w2s:
+  pairs: all

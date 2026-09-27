@@ -1,0 +1,24 @@
+# E10 sanity check: conf loss with alpha 0, which is mathematically the naive soft-CE loss. W2S jobs get new
+# cache keys (conf_loss is set) and retrain; results should match E1 (base_full_48gb) within run-to-run noise.
+# Run with EXTRA="--reuse-from outputs/base_full_48gb-1b976761".
+experiment: base_w2s
+name: base_full_48gb_conf_a0
+seeds: [0, 1, 2]
+splits:
+  split_seed: 1234
+  sizes: {val: 1000, weak_train: 5000, strong_train: 5000}
+models:
+  - {name: p160m, id: EleutherAI/pythia-160m, params: 1.6e8, lr: 5.0e-5, batch_size: 32}
+  - {name: p410m, id: EleutherAI/pythia-410m, params: 4.1e8, lr: 3.0e-5, batch_size: 32}
+  - {name: p1b,   id: EleutherAI/pythia-1b,   params: 1.0e9, lr: 2.0e-5, batch_size: 32}
+  - {name: p1.4b, id: EleutherAI/pythia-1.4b, params: 1.4e9, lr: 1.5e-5, batch_size: 32}
+train:
+  epochs: 2
+  max_length: 128
+  evals_per_epoch: 2
+  loss: soft_ce
+  selection: auto
+  save_checkpoints: false
+  conf_loss: {alpha: 0.0, warmup_frac: 0.2}
+base_w2s:
+  pairs: all

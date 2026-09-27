@@ -23,6 +23,8 @@ def main(argv=None):
     ap.add_argument("--seeds", type=int, nargs="+", help="override config seeds")
     ap.add_argument("--output-dir", help="override the output directory")
     ap.add_argument("--analysis-only", action="store_true", help="only (re)build metrics/plots from cached jobs")
+    ap.add_argument("--reuse-from", action="append", default=[], metavar="RUN_DIR",
+                    help="copy finished jobs with identical cache keys from an earlier run dir (repeatable)")
     args = ap.parse_args(argv)
 
     cfg = load_config(args.config)
@@ -58,6 +60,8 @@ def main(argv=None):
         jobs += exp.build_jobs(cfg, seed, first=(i == 0))
     jobs = prepare(jobs, ctx)
     assert all(j.train_split != TEST_ROLE for j in jobs)
+    for src_run in args.reuse_from:
+        reuse_jobs(jobs, ctx, Path(src_run), copy=not args.dry_run)
 
     if args.dry_run:
         estimate(jobs, ctx)
@@ -79,6 +83,24 @@ def main(argv=None):
     exp.analyze(ctx, results)
     log(f"\nWrote {out / 'summary.md'}")
     return out
+
+
+def reuse_jobs(jobs, ctx: RunContext, src_run: Path, copy: bool = True) -> int:
+    """Copy finished job dirs whose content-hash key matches from another run (e.g. shared teachers/ceilings)."""
+    import shutil
+
+    from .jobs import job_dir
+
+    n = 0
+    for j in jobs:
+        dst = job_dir(ctx, j)
+        src = src_run / "jobs" / dst.name
+        if not dst.exists() and (src / "done.json").exists():
+            if copy:
+                shutil.copytree(src, dst, ignore=shutil.ignore_patterns("checkpoint"))
+            n += 1
+    log(f"{'Reused' if copy else 'Would reuse'} {n} finished job(s) from {src_run}")
+    return n
 
 
 if __name__ == "__main__":
