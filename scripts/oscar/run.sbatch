@@ -26,6 +26,8 @@ source .venv/bin/activate
 
 echo "job $SLURM_JOB_ID on $(hostname): CONFIG=$CONFIG EXTRA=${EXTRA:-}"
 nvidia-smi --query-gpu=name,memory.total --format=csv
+# Fail fast instead of silently training on CPU (e.g. a torch build whose CUDA is newer than the driver).
+python -c "import sys, torch; print('torch', torch.__version__, 'cuda', torch.version.cuda); sys.exit(0 if torch.cuda.is_available() else 'ERROR: torch.cuda.is_available() is False')"
 # Full fine-tuning of Pythia-2.8B needs ~45 GB of GPU memory; warn early on smaller cards.
 MEM_MB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | head -1)
 if [ "$MEM_MB" -lt 70000 ] && grep -q "pythia-2.8b" "$CONFIG"; then

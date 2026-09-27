@@ -1,0 +1,23 @@
+# Daisy chain sized for a 48 GB card (L40S): GT -> M1 (160M) -> M2 (410M) -> M3 (1B) -> M4 (1.4B), 3 seeds.
+# Same ladder as base_full_48gb; 2.8B full fine-tuning does not fit on 48 GB.
+# Conditions per seed: seed M1, chain M2..M4, GT upper bounds M2..M4, direct M1->M3, M1->M4, M2->M4.
+experiment: daisy_chain
+name: chain_full_48gb
+seeds: [0, 1, 2]
+splits:
+  split_seed: 1234
+  sizes: {val: 1000, seed_true_train: 5000, g2: 5000, g3: 5000, g4: 5000}
+models:
+  - {name: p160m, id: EleutherAI/pythia-160m, params: 1.6e8, lr: 5.0e-5, batch_size: 32}
+  - {name: p410m, id: EleutherAI/pythia-410m, params: 4.1e8, lr: 3.0e-5, batch_size: 32}
+  - {name: p1b,   id: EleutherAI/pythia-1b,   params: 1.0e9, lr: 2.0e-5, batch_size: 32}
+  - {name: p1.4b, id: EleutherAI/pythia-1.4b, params: 1.4e9, lr: 1.5e-5, batch_size: 32}
+train:
+  epochs: 2
+  max_length: 128
+  evals_per_epoch: 2
+  loss: soft_ce
+  selection: auto
+  save_checkpoints: false
+daisy_chain:
+  direct: auto   # all pairs skipping >= 1 rung: p160m->p1b, p160m->p1.4b, p410m->p1.4b
