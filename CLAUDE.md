@@ -112,6 +112,21 @@ conf loss's disagreement with the teacher; check `best_step` in train_log.json.
   Added `conf_loss.schedule: ref` (default `linear` unchanged, so E3/E5/E7 keys are unchanged); 39 tests pass.
   E9/E10 results (2026-09-26): E10 reproduces E1 exactly -> no wiring bug. E9 -> our alpha 0.75 + early linear
   ramp caused the damage in E3/E5/E7; with the repo's settings the conf loss is neutral at 160M-2.8B on SST-2.
+- 2026-09-28 checked against the PAPER itself (arXiv 2312.09390; PDF + text in ~/scratch/claude_tmp/w2s_ref):
+  - Tasks: Table 1 lists 22 NLP datasets incl. GLUE SST-2 and BoolQ (both in the paper). Released code has
+    only amazon_polarity, sciq, anthropic_hh, cosmos_qa, boolq (no SST-2).
+  - NEW DEVIATION: the paper rebalances any dataset whose majority class is > 55% (drops dominant-class
+    examples) and balances the test set, so chance = 50% everywhere. We did not: BoolQ is 62% "yes" (the
+    160m teacher's always-"yes" = 0.622 would be 0.50 in the paper's setup); SST-2 train is ~56% positive.
+  - Conf loss (App. A.4): alpha_max 0.75 for the LARGEST students, 0.5 otherwise, LINEAR warmup 0 -> alpha_max
+    over the first 20%; threshold t so exactly half the batch is predicted positive (fine on balanced data).
+    So E3/E5/E7's schedule WAS the paper's; the deviation was alpha 0.75 for all students. The released
+    code's settings (E9: 0.5, step schedule over 10%) differ from the paper. E3 vs E9 changed alpha and
+    schedule together, so which one caused the damage is NOT separated. Paper says the loss had "small or
+    neutral effect" for most pairs/datasets and big gains in a few.
+  - Head init: paper inits from unembedding rows of "0"/"1" (README right); ours and the released code zero-init.
+  - Checkpoint selection: paper early-stops on weak-label val accuracy (= ours); released code uses final.
+  - 2 epochs, batch 32, soft weak labels, weak/strong halves of the data: same as ours.
 - BoolQ at this scale (4k examples, 2 epochs, lr as SST-2) is too hard: the 160m teacher never beats
   "always yes" and ceilings are 0.63-0.71. Options: more data/epochs or lr tuning for BoolQ, drop p160m as the
   bottom rung (start the ladder at p410m), or pick a task of intermediate difficulty.
